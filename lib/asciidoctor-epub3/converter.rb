@@ -3,6 +3,7 @@
 require 'mime/types'
 require 'open3'
 require_relative 'font_icon_map'
+require 'pathname'
 
 module Asciidoctor
   module Epub3
@@ -1289,7 +1290,7 @@ document.addEventListener('DOMContentLoaded', function(event, reader) {
 
       def add_theme_assets doc
         format = @format
-        workdir = if doc.attr? 'epub3-stylesdir'
+        styles_workdir = if doc.attr? 'epub3-stylesdir'
                     stylesdir = doc.attr 'epub3-stylesdir'
                     # FIXME: make this work for Windows paths!!
                     if stylesdir.start_with? '/'
@@ -1302,6 +1303,20 @@ document.addEventListener('DOMContentLoaded', function(event, reader) {
                   else
                     ::File.join DATA_DIR, 'styles'
                   end
+        
+        fonts_workdir = if doc.attr? 'epub3-fontsdir'
+          fontsdir = doc.attr 'epub3-fontsdir'
+          # FIXME: make this work for Windows paths!!
+          if fontsdir.start_with? '/'
+            fontsdir
+          else
+            docdir = doc.attr 'docdir', '.'
+            docdir = '.' if docdir.empty?
+            ::File.join docdir, fontsdir
+          end
+        else
+          ::File.join DATA_DIR, 'fonts'
+        end
 
         # TODO: improve design/UX of custom theme functionality, including custom fonts
 
@@ -1309,11 +1324,11 @@ document.addEventListener('DOMContentLoaded', function(event, reader) {
           # NOTE: add layer of indirection so Kindle Direct Publishing (KDP) doesn't strip font-related CSS rules
           @book.add_item 'styles/epub3.css', content: '@import url("epub3-proxied.css");'.to_ios
           @book.add_item 'styles/epub3-css3-only.css', content: '@import url("epub3-css3-only-proxied.css");'.to_ios
-          @book.add_item 'styles/epub3-proxied.css', content: (postprocess_css_file ::File.join(workdir, 'epub3.css'), format)
-          @book.add_item 'styles/epub3-css3-only-proxied.css', content: (postprocess_css_file ::File.join(workdir, 'epub3-css3-only.css'), format)
+          @book.add_item 'styles/epub3-proxied.css', content: (postprocess_css_file ::File.join(styles_workdir, 'epub3.css'), format)
+          @book.add_item 'styles/epub3-css3-only-proxied.css', content: (postprocess_css_file ::File.join(styles_workdir, 'epub3-css3-only.css'), format)
         else
-          @book.add_item 'styles/epub3.css', content: (postprocess_css_file ::File.join(workdir, 'epub3.css'), format)
-          @book.add_item 'styles/epub3-css3-only.css', content: (postprocess_css_file ::File.join(workdir, 'epub3-css3-only.css'), format)
+          @book.add_item 'styles/epub3.css', content: (postprocess_css_file ::File.join(styles_workdir, 'epub3.css'), format)
+          @book.add_item 'styles/epub3-css3-only.css', content: (postprocess_css_file ::File.join(styles_workdir, 'epub3-css3-only.css'), format)
         end
 
         syntax_hl = doc.syntax_highlighter
@@ -1329,7 +1344,7 @@ document.addEventListener('DOMContentLoaded', function(event, reader) {
           end
         end
 
-        font_files, font_css = select_fonts ::File.join(DATA_DIR, 'styles/epub3-fonts.css'), (doc.attr 'scripts', 'latin')
+        font_files, font_css = select_fonts ::File.join(styles_workdir, 'epub3-fonts.css'), (doc.attr 'scripts', 'latin')
         @book.add_item 'styles/epub3-fonts.css', content: font_css
         unless font_files.empty?
           # NOTE: metadata property in oepbs package manifest doesn't work; must use proprietary iBooks file instead
@@ -1342,7 +1357,8 @@ document.addEventListener('DOMContentLoaded', function(event, reader) {
 </display_options>'.to_ios unless format == :kf8
 
           font_files.each do |font_file|
-            @book.add_item font_file, content: File.join(DATA_DIR, font_file)
+            # print font_file
+            @book.add_item font_file, content: File.join(fonts_workdir, font_file)
           end
         end
         nil
@@ -1612,7 +1628,7 @@ body > svg {
         # match CSS font urls in the forms of:
         # src: url(../fonts/notoserif-regular-latin.ttf);
         # src: url(../fonts/notoserif-regular-latin.ttf) format("truetype");
-        font_list = font_css.scan(/url\(\.\.\/([^)]+\.ttf)\)/).flatten
+        font_list = font_css.scan(/url\((\.\.\/[^)]+\.ttf)\)/).flatten
 
         [font_list, font_css.to_ios]
       end
